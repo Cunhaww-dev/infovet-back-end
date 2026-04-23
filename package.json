@@ -1,12 +1,12 @@
 {
   "name": "infovet",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "API para o Infovet, um sistema de gerenciamento e criação de prontuários online.",
+  "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsup",
-    "start": "node dist/server.cjs",
+    "start": "node dist/server.js",
     "lint": "biome check src",
     "format": "biome format --write src"
   },
