@@ -6,27 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run dev          # development server with watch mode (tsx)
-npm run build        # compile to dist/ with tsup
-npm run lint         # biome check
-npm run format       # biome format --write
+npm run build        # compile to dist/server.js with tsup (CJS)
+npm run start        # run compiled output (production)
+npm run lint         # biome check src
+npm run format       # biome format --write src
 npm run db:generate  # generate migration from schema changes
 npm run db:migrate   # run pending migrations against the database
+npm run db:studio    # open Drizzle Studio (visual DB browser)
 ```
 
 ## Code style
 
-Biome enforces: 2-space indent, single quotes, no semicolons, trailing commas (ES5). Imports are auto-organized on save.
+Biome enforces: 2-space indent, single quotes, no semicolons, trailing commas (ES5). All code identifiers (variables, functions, files, columns) are in English. User-facing error messages may be in Portuguese.
 
 ## Architecture
 
-Feature modules live under `src/modules/<feature>/` with four files each:
+Feature modules live under `src/modules/<feature>/` with four files:
 
-- `auth.schema.ts` — Zod schemas for request body validation + exported inferred types
-- `auth.service.ts` — all business logic; no knowledge of HTTP (never imports `Request`/`Response`)
-- `auth.controller.ts` — parses/validates req body with Zod `safeParse`, calls service, maps errors to HTTP status codes
-- `auth.routes.ts` — registers Express routes, imports controller handlers
+- `<feature>.schema.ts` — Zod schemas for request body validation + exported inferred types
+- `<feature>.service.ts` — all business logic and DB queries; never imports `Request`/`Response`
+- `<feature>.controller.ts` — parses/validates `req.body` with Zod `safeParse`, calls service, maps errors to HTTP status codes
+- `<feature>.routes.ts` — registers Express routes, imports controller handlers
 
-The controller is the only layer that translates service errors into HTTP responses. Services throw plain `Error` instances with human-readable messages; controllers catch them and map to the appropriate status code.
+The controller is the only layer that translates service errors into HTTP responses. Services throw plain `Error` instances; controllers catch them and map to the appropriate status code.
 
 ## Database
 
@@ -34,17 +36,34 @@ Drizzle ORM with MySQL2. Schema files live in `src/db/schema/` — one file per 
 
 `drizzle.config.ts` (root) points drizzle-kit at `src/db/schema/` and outputs migrations to `drizzle/`. Migrations are committed to git.
 
+Column naming uses snake_case in the database (`password_hash`, `created_at`) and camelCase or snake_case in TypeScript matching the Drizzle field key.
+
 ## Path alias
 
-`@/*` maps to `src/*`. Always use `@/` for internal imports.
+`@/*` maps to `src/*`. Always use `@/` for internal imports, except within the same module directory where relative imports are also acceptable.
+
+## Authentication
+
+The `authenticate` middleware lives at `src/middlewares/authentication.ts`. It verifies the `Authorization: Bearer <token>` header and injects `req.user = { id: number }` into the request. The TypeScript global augmentation for `req.user` is declared in that same file.
+
+Usage on protected routes:
+```ts
+router.get('/resource', authenticate, handlerFunction)
+```
 
 ## Multi-tenant isolation
 
-Every table has a `veterinario_id` column. All queries must filter by `req.user.id`, which is injected by the `authenticate` middleware from the JWT payload — never from the request body or URL params. This is what prevents cross-tenant data access.
+Every future table (beyond `veterinarians`) must have a `veterinarian_id` column. All queries must filter by `req.user.id` injected by the `authenticate` middleware — never trust `veterinarian_id` from the request body or URL params.
+
+## Build
+
+tsup compiles `src/server.ts` to `dist/server.js` (CommonJS, forced `.js` extension via `outExtension` for Hostinger compatibility). The `type: "module"` in `package.json` applies to source files only.
 
 ## Environment
 
-Required variables (validated with Zod in `src/config/env.ts` at startup):
+Variables validated with Zod at startup in `src/config/env.ts`:
 - `DATABASE_URL` — MySQL connection string
 - `JWT_SECRET` — minimum 16 characters
 - `JWT_EXPIRES_IN` — e.g. `7d`
+- `PORT` — defaults to 3000
+- `NODE_ENV` — `development` | `production` | `test`
